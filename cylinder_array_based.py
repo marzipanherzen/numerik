@@ -43,7 +43,7 @@ import matplotlib.cm as cm
 import time
 import numba
 import copy
-# import xlsxwriter
+import xlsxwriter
 
 ########################################################################################################################
 
@@ -459,8 +459,8 @@ if __name__ == '__main__':
     count_plot = 0
     detatch_count = 0
 
-    # workbook = xlsxwriter.Workbook('runtime.xlsx')
-    # worksheet = workbook.add_worksheet()
+    workbook = xlsxwriter.Workbook('runtime.xlsx')
+    worksheet = workbook.add_worksheet()
     t_plot = t_plot / 2
 
     if plot_flag:
