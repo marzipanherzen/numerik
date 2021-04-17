@@ -43,14 +43,14 @@ import matplotlib.cm as cm
 import time
 import numba
 import copy
-import xlsxwriter
+# import xlsxwriter
 
 ########################################################################################################################
 
 ### -- PARAMETER HEADER -- ###
 N = 128         #   number of cylinder boundary-segments
 Re = 10**3      #   Reynolds number
-dt = 0.01       #   update time of boundaries(for prec = 1 dt is also ODE-solver timestep!)
+dt = 0.05      #   update time of boundaries(for prec = 1 dt is also ODE-solver timestep!)
 d_detach = 5    #   detach boundary vortices every d_detatch timesteps
 
 # freestream
@@ -63,7 +63,7 @@ D = 2           # diameter of cylinder
 ###
 plot_flag = True        #   True if plot is desired
 tracer_flag = False     #   True if tracers are desired
-save_flag = True        #   True if save is desired
+save_flag = False        #   True if save is desired
 
 png_path = "Pictures\Parameterstudie"   # path where snapshots are saved
 
@@ -329,7 +329,7 @@ def matrix_A_create(boundary_vortices, h, normal, z_cen):
             V = dx/(d2*2*np.pi)
             A[i, j] = U*normal[i].real + V*normal[i].imag
 
-    A_t = A.T@A + np.ones((N, N))                           # correction because of inversion of ill conditioned A
+    A_t = A.T@A + np.eye(N)                           # correction because of inversion of ill conditioned A
     Inv = np.linalg.pinv(A_t)
     return A, Inv
 
@@ -459,8 +459,8 @@ if __name__ == '__main__':
     count_plot = 0
     detatch_count = 0
 
-    workbook = xlsxwriter.Workbook('runtime.xlsx')
-    worksheet = workbook.add_worksheet()
+    # workbook = xlsxwriter.Workbook('runtime.xlsx')
+    # worksheet = workbook.add_worksheet()
     t_plot = t_plot / 2
 
     if plot_flag:
