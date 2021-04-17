@@ -44,6 +44,7 @@ import time
 import numba
 import copy
 import xlsxwriter
+import barneshut as barnes
 
 ########################################################################################################################
 
@@ -361,7 +362,7 @@ def collatz_vec(vortices, bd_vortex, vel_inf, dt, h, gammas, bd_gammas, N, visco
     gammas += u_gamma*dt
     return vortices, gammas
 
-@njit(fastmath=True, parallel=True)
+# @njit(fastmath=True, parallel=True)
 def adaptive_collatz(vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec, visco, x_d, y_d, gammas, bd_gammas, t_detach, h, diffusion_method):
 
     t = 0
@@ -386,7 +387,8 @@ def adaptive_collatz(vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec
         vortices_correct = vortices.copy()
 
         # regular step
-        vortices_test, gammas = collatz_vec(vortices_test, boundary_vortices, vel_inf, ada_dt, h, gammas, bd_gammas, N, visco)
+        # vortices_test, gammas = collatz_vec(vortices_test, boundary_vortices, vel_inf, ada_dt, h, gammas, bd_gammas, N, visco)
+        vortices_test, gammas = barnes.barnes_collatz(vortices_test, boundary_vortices, vel_inf, ada_dt, h, gammas, bd_gammas, N, visco, x_d, y_d)
 
         # error correction
         #for i in range(prec):
@@ -459,8 +461,8 @@ if __name__ == '__main__':
     count_plot = 0
     detatch_count = 0
 
-    workbook = xlsxwriter.Workbook('runtime.xlsx')
-    worksheet = workbook.add_worksheet()
+    # workbook = xlsxwriter.Workbook('runtime.xlsx')
+    # worksheet = workbook.add_worksheet()
     t_plot = t_plot / 2
 
     if plot_flag:
