@@ -36,14 +36,14 @@ class Branch:
 
 def insertPoint(x,y,G,branch):
     '''
-    Insert a vortex into the tree using the following recursive procedure
-    i) if branch does not contain a vortex, put vortex as leaf here
-    ii) if branch is a child (internal branch), update the center-of-vorticity and total vorticity.
+    Insert a vortex into the tree using the following recursive procedure \\
+    i) if branch does not contain a vortex, put vortex as leaf here \\
+    ii) if branch is a child (internal branch), update the center-of-vorticity and total vorticity. \\
         recursively insert the vortex in the appropriate quadrant
-    iii) if branch is a leaf (external branch), then there are two vortices in the same region. 
+    iii) if branch is a leaf (external branch), then there are two vortices in the same region.
         subdivide the region further by creating children. then, recursively insert both vortices into the appropriate quadrant(s).
         since both vortices may still end up in the same quadrant, there may be several subdivisions during
-        a single insertion.
+        a single insertion. \\
         Finally, update the center-of-vorticity and total vorticity of branch
     '''
     if not branch.hasChild and not branch.hasLeaf:
@@ -124,6 +124,12 @@ def calculations(x1,x2,y1,y2,G1,G2,h,visco,multi_flag=True,gammas_flag=True):
     return U, V, w
 
 def barnes_exchange(x,y,h,G,branch,visco,alpha,U=0.0,V=0.0,W=0.0):
+    '''
+    Walk through entire branch and compute induced velocity and vorticity on current vortice \\
+    x, y, G -     position and vorticity of current vortice
+    branch -    specifies the current branch that is checked (initialize with "root")
+    alpha -     the threshold value that determines whether further parts of the branch are checked-out
+    '''
     if branch.hasLeaf:
         if not branch.xLeaf == x and not branch.yLeaf == y:
             u, v, w = calculations(x,branch.xLeaf,y,branch.yLeaf,G,branch.GLeaf,h,visco,multi_flag=False,gammas_flag=True)
@@ -147,7 +153,7 @@ def barnes_exchange(x,y,h,G,branch,visco,alpha,U=0.0,V=0.0,W=0.0):
                     V += vel.imag
                     W += w
 
-    return U + 1j*V, w
+    return U + 1j*V, W
 
 def barnes_collatz(vortices, bd_vortices, vel_inf, dt, h, gammas, bd_gammas, N, visco, alpha, x_d, y_d):
     # first collatz step
