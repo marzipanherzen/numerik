@@ -50,14 +50,14 @@ import barneshut as barnes
 N = 128         #   number of cylinder boundary-segments
 Re = 10**3      #   Reynolds number
 dt = 0.05     #   update time of boundaries(for prec = 1 dt is also ODE-solver timestep!)
-d_detach = 5    #   detach boundary vortices every d_detatch timesteps
+d_detach = 2    #   detach boundary vortices every d_detatch timesteps
 
 # freestream
 u = -1.0        #   x-component of free velocity
 v = 0.0         #   y-component of free velocity
 
 # obstacle
-D = 2           # diameter of cylinder
+D = 1           # diameter of cylinder
 
 ###
 plot_flag = True        #   True if plot is desired

@@ -15,7 +15,6 @@ import math
 import numpy as np
 from numba import njit, prange
 import time
-import xlsxwriter
 
 alpha = 0.5
 
@@ -96,13 +95,13 @@ def insertPoint(x,y,G,branch):
         branch.yLeaf += y*G # same as for x 
         branch.GLeaf += G # total vorticity increases
 
-def calculations(x1,x2,y1,y2,G1,G2,h,visco,multi_flag=True,gammas_flag=True):
+def calculations(x1,x2,y1,y2,G1,G2,h,visco,multi_flag=True,gammas_flag=True): 
     '''
     Calculate velocity and vorticity induced from one vortice one the other \\
     Vortice 1 is the one on which velocity is induced \\
     If a multipole is considered (multi_flag == True), the velocity is approximated via "Multipolentwicklung"
-        x2 is then equivalent to \Gamma_i x_i, i.e. the weighted sum over all x in that branch
-        y2 analog
+        x2*G2 is then equivalent to \Gamma_i x_i, i.e. the weighted sum over all x in that branch
+        y2*G2 analog
         G is then equivalent to \Gamma_i 1_i, i.e. the sum over all gammas in that branch
     If relation of free and boundary vortices is considered no vorticity is exchanged (gammas_flag == False)
     '''
@@ -114,8 +113,8 @@ def calculations(x1,x2,y1,y2,G1,G2,h,visco,multi_flag=True,gammas_flag=True):
     V = (G2/(2*np.pi)) * (dx/d2)
 
     if multi_flag:
-        U -= x2 * (1/(2*np.pi)) * (1/(d2**2)) * 2*dx*dy
-        V -= y2 * (1/(2*np.pi)) * (1/(d2**2)) * (-2)*dx*dy
+        U += G2 * (1/(2*np.pi)) * (1/(d2**2)) * (x2*2*dx*dy + y2 *(- dx**2 + dy**2 - h))      # wie implementieren mit Vorzeichen? auf + wechseln
+        V -= G2 * (1/(2*np.pi)) * (1/(d2**2)) * (y2*(-2)*dx*dy + x2 *(- dx**2 + dy**2 + h))
 
     w = None
     if gammas_flag:
