@@ -26,7 +26,6 @@ class Branch:
         self.D = D
 
         self.hasChild = False
-        self.name = None
         self.children = [None,None,None,None] # NW -+, SW --, SE +-, NE ++
         
         self.hasLeaf = False
@@ -69,8 +68,8 @@ def insertPoint(x,y,G,branch):
                     insertPoint(branch.xLeaf,branch.yLeaf,branch.GLeaf,branch.children[3])
             branch.hasLeaf = False
 
-            branch.xLeaf = branch.xLeaf - branch.xm # switch from leaf-data to multipole-coefficient
-            branch.yLeaf = branch.yLeaf - branch.ym # same as above
+            branch.xLeaf = branch.xLeaf * branch.GLeaf # switch from leaf-data to multipole-coefficient
+            branch.yLeaf = branch.yLeaf * branch.GLeaf # same as above
 
         if x < branch.xm:
             if y < branch.ym:
@@ -92,17 +91,17 @@ def insertPoint(x,y,G,branch):
                 insertPoint(x,y,G,branch.children[3])            
         branch.hasChild = True
 
-        branch.xLeaf += x-branch.xm # distance to geometric center
-        branch.yLeaf += y-branch.ym 
+        branch.xLeaf += x*G # center of branch is given by (x1*g1 + x2*g2 + ...)/G where G = g1 + g2 + ...
+        branch.yLeaf += y*G # same as for x 
         branch.GLeaf += G # total vorticity increases
 
-def calculations(x1,x2,y1,y2,G2,h,multi_flag=False,multi_x=None,multi_y=None,gammas_flag=False,G1=None,visco=None): 
+def calculations(x1,x2,y1,y2,G1,G2,h,visco,multi_flag=True,gammas_flag=True): 
     '''
     Calculate velocity and vorticity induced from one vortice one the other \\
     Vortice 1 is the one on which velocity is induced \\
     If a multipole is considered (multi_flag == True), the velocity is approximated via "Multipolentwicklung"
-        multi_x is then equivalent to the sum over all distances from vortices to geometric center
-        multi_y analog
+        x2*G2 is then equivalent to \Gamma_i x_i, i.e. the weighted sum over all x in that branch
+        y2*G2 analog
         G2 is then equivalent to \Gamma_i 1_i, i.e. the sum over all gammas in that branch
     If relation of free and boundary vortices is considered no vorticity is exchanged (gammas_flag == False)
     '''
@@ -110,20 +109,20 @@ def calculations(x1,x2,y1,y2,G2,h,multi_flag=False,multi_x=None,multi_y=None,gam
     dy = y1 - y2
     d2 = dx**2 + dy**2 + h
 
-    U = -(G2/(2*np.pi)) * (dy/d2)
+    U = (G2/(2*np.pi)) * (dy/d2)
     V = (G2/(2*np.pi)) * (dx/d2)
 
     if multi_flag:
-        U -= G2 * (1/(2*np.pi)) * (1/(d2**2)) * (2*dx*dy * multi_x + (- dx**2 + dy**2 - h) * multi_y)
-        V -= G2 * (1/(2*np.pi)) * (1/(d2**2)) * ((- dx**2 + dy**2 + h) * multi_x - 2*dx*dy * multi_y)
+        U += G2 * (1/(2*np.pi)) * (1/(d2**2)) * (x2*2*dx*dy + y2 *(- dx**2 + dy**2 - h))
+        V -= G2 * (1/(2*np.pi)) * (1/(d2**2)) * (y2*(-2)*dx*dy + x2 *(- dx**2 + dy**2 + h))
 
     w = None
     if gammas_flag:
         w = (G2-G1) * h**2 * visco * 4 * (5*d2 - 2*h)/((d2)**4)
 
-    return U+1j*V, w
+    return U, V, w
 
-def barnes_exchange(x,y,h,G,branch,visco,alpha,vel=0+0j,w=0):
+def barnes_exchange(x,y,h,G,branch,visco,alpha,U=0.0,V=0.0,W=0.0):
     '''
     Walk through entire branch and compute induced velocity and vorticity on current vortice \\
     x, y, G -     position and vorticity of current vortice \\
@@ -132,23 +131,28 @@ def barnes_exchange(x,y,h,G,branch,visco,alpha,vel=0+0j,w=0):
     '''
     if branch.hasLeaf:
         if not branch.xLeaf == x and not branch.yLeaf == y:
-            U, W = calculations(x,branch.xLeaf,y,branch.yLeaf,branch.GLeaf,h,multi_flag=False,gammas_flag=True,G1=G,visco=visco)
-            vel += U
-            w += W
+            u, v, w = calculations(x,branch.xLeaf,y,branch.yLeaf,G,branch.GLeaf,h,visco,multi_flag=False,gammas_flag=True)
+            U -= u
+            V += v
+            W += w
     else:
-        dist = ((x-branch.xm)**2)+((y-branch.ym)**2) # calculate distance to geometric center of branch
-        if (branch.D)**2/dist < alpha**2: # maybe add h to prevent division by 0 in case vortice and weighted center of branch are very close
-            U, W = calculations(x,branch.xm,y,branch.ym,branch.GLeaf,h,multi_flag=True,multi_x=branch.xLeaf,multi_y=branch.yLeaf,gammas_flag=True,G1=G,visco=visco)
-            vel += U
-            w += W          
+        xm = branch.xLeaf / branch.GLeaf # center of branch is given by (x1*g1 + x2*g2 + ...)/G where G = g1 + g2 + ...
+        ym = branch.yLeaf / branch.GLeaf # same as for x
+        dist = ((x-xm)**2)+((y-ym)**2) 
+        if (branch.D)**2/(dist+h) < alpha**2: # maybe add h to prevent division by 0 in case vortice and weighted center of branch are very close
+            u, v, w = calculations(x,xm,y,ym,G,branch.GLeaf,h,visco,multi_flag=True,gammas_flag=True)
+            U -= u
+            V += v
+            W += w            
         else:
             for child in branch.children: 
                 if child is not None:
-                    U, W = barnes_exchange(x,y,h,G,child,visco,alpha,vel,w)
-                    vel += U
-                    w += W
+                    vel, w = barnes_exchange(x,y,h,G,child,visco,alpha,U,V,W)
+                    U -= vel.real
+                    V += vel.imag
+                    W += w
 
-    return vel, w
+    return U + 1j*V, W
 
 def barnes_collatz(vortices, bd_vortices, vel_inf, dt, h, gammas, bd_gammas, N, visco, alpha, x_d, y_d):
     # first collatz step
@@ -157,7 +161,6 @@ def barnes_collatz(vortices, bd_vortices, vel_inf, dt, h, gammas, bd_gammas, N, 
     ym_root = y_d[0] + math.sqrt( ((y_d[0]-y_d[1])**2) ) / 2
     D_root = max(math.sqrt( ((x_d[0]-x_d[1])**2) ), math.sqrt( ((y_d[0]-y_d[1])**2) ))
     root_half = Branch(xm_root,ym_root,D_root)
-    root_half.name = 'root_half'
 
     # insert all free vortices
     # tic = time.time()
@@ -173,8 +176,8 @@ def barnes_collatz(vortices, bd_vortices, vel_inf, dt, h, gammas, bd_gammas, N, 
     for j in prange(len(vortices)):
         u_half[j], w_gamma_half[j] = barnes_exchange(vortices[j].real,vortices[j].imag,h,gammas[j],root_half,visco,alpha)
         for k in prange(len(bd_vortices)):
-            vel, w = calculations(vortices[j].real,bd_vortices[k].real,vortices[j].imag,bd_vortices[k].imag,bd_gammas[k],h,multi_flag=False,gammas_flag=False)
-            u_half[j] += vel
+            U, V, w = calculations(vortices[j].real,bd_vortices[k].real,vortices[j].imag,bd_vortices[k].imag,gammas[j],bd_gammas[k],h,visco,multi_flag=False,gammas_flag=False)
+            u_half[j] += U + 1j*V
 
     mid_points = vortices + (u_half + vel_inf)*0.5*dt
     mid_gammas = gammas + w_gamma_half*0.5*dt
@@ -191,8 +194,8 @@ def barnes_collatz(vortices, bd_vortices, vel_inf, dt, h, gammas, bd_gammas, N, 
     for j in prange(len(mid_points)):
         u_full[j], w_gamma_full[j] = barnes_exchange(mid_points[j].real,mid_points[j].imag,h,gammas[j],root_full,visco,alpha)
         for k in prange(len(bd_vortices)):
-            vel, w = calculations(mid_points[j].real,bd_vortices[k].real,mid_points[j].imag,bd_vortices[k].imag,bd_gammas[k],h,multi_flag=False,gammas_flag=False)
-            u_full[j] += vel
+            U, V, w = calculations(mid_points[j].real,bd_vortices[k].real,mid_points[j].imag,bd_vortices[k].imag,mid_gammas[j],bd_gammas[k],h,visco,multi_flag=False,gammas_flag=False)
+            u_full[j] += U + 1j*V
 
     vortices += (u_full + vel_inf)*dt
     gammas += w_gamma_full*dt

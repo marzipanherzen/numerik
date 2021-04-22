@@ -42,7 +42,7 @@ import time
 import numba
 import copy
 import xlsxwriter
-import barneshut as barnes
+import barneshut_old as barnes
 
 ########################################################################################################################
 
@@ -69,7 +69,7 @@ png_path = "Pictures\Parameterstudie"   # path where snapshots are saved
 # time
 t_end = 25                             #   end time of simulation in s
 t_save = 30                             #   timesteps at which a snapshot png is saved to png_path
-t_plot = 0.5                            #   plot spacing
+t_plot = 0.01                            #   plot spacing
 
 diffusion_method = 'diffusion'          # 'diffusion' or 'viscous_vortex' or 'none'
 tracer_method = 'streamline'            # 'streamline' or none
@@ -90,7 +90,7 @@ min_step = 10**-5       #   minimum adaptive stepsize allowed
 prec = 1                #   precicion of error correction (if prec = 1 dt becomes timestep)
 ada_dt = (tol**(1/2))/4 #   initial timestep
 
-alpha = 0.5 # tolerance for determining barnes hut octa tree 
+alpha = 0.8 # tolerance for determining barnes hut octa tree 
 
 ########################################################################################################################
 sin = np.sin
