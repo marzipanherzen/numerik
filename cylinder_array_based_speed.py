@@ -26,8 +26,6 @@ created 01/08/2020 by @V. Herbig; @L. Scheffold
 # implement dynamic h for merge code ***
 # check merge code for list replacement *
 #
-# write barnes hut **
-#
 # check conservation of energy in diffusion step
 
 
@@ -51,15 +49,15 @@ import barneshut as barnes
 ### -- PARAMETER HEADER -- ###
 N = 128         #   number of cylinder boundary-segments
 Re = 10**3      #   Reynolds number
-dt = 0.05      #   update time of boundaries(for prec = 1 dt is also ODE-solver timestep!)
-d_detach = 5    #   detach boundary vortices every d_detatch timesteps
+dt = 0.05     #   update time of boundaries(for prec = 1 dt is also ODE-solver timestep!)
+d_detach = 2    #   detach boundary vortices every d_detatch timesteps
 
 # freestream
 u = -1.0        #   x-component of free velocity
 v = 0.0         #   y-component of free velocity
 
 # obstacle
-D = 2           # diameter of cylinder
+D = 1           # diameter of cylinder
 
 ###
 plot_flag = True        #   True if plot is desired
@@ -69,7 +67,7 @@ save_flag = False        #   True if save is desired
 png_path = "Pictures\Parameterstudie"   # path where snapshots are saved
 
 # time
-t_end = 30                              #   end time of simulation in s
+t_end = 25                             #   end time of simulation in s
 t_save = 30                             #   timesteps at which a snapshot png is saved to png_path
 t_plot = 0.5                            #   plot spacing
 
@@ -91,6 +89,8 @@ tol = 10**-4            #   absolute error tolerance in adaptive collatz
 min_step = 10**-5       #   minimum adaptive stepsize allowed
 prec = 1                #   precicion of error correction (if prec = 1 dt becomes timestep)
 ada_dt = (tol**(1/2))/4 #   initial timestep
+
+alpha = 0.5 # tolerance for determining barnes hut octa tree 
 
 ########################################################################################################################
 sin = np.sin
@@ -363,7 +363,7 @@ def collatz_vec(vortices, bd_vortex, vel_inf, dt, h, gammas, bd_gammas, N, visco
     return vortices, gammas
 
 # @njit(fastmath=True, parallel=True)
-def adaptive_collatz(vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec, visco, x_d, y_d, gammas, bd_gammas, t_detach, h, diffusion_method):
+def adaptive_collatz(vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec, visco, x_d, y_d, gammas, bd_gammas, t_detach, h, diffusion_method, alpha):
 
     t = 0
     flag = False
@@ -387,8 +387,7 @@ def adaptive_collatz(vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec
         vortices_correct = vortices.copy()
 
         # regular step
-        # vortices_test, gammas = collatz_vec(vortices_test, boundary_vortices, vel_inf, ada_dt, h, gammas, bd_gammas, N, visco)
-        vortices_test, gammas = barnes.barnes_collatz(vortices_test, boundary_vortices, vel_inf, ada_dt, h, gammas, bd_gammas, N, visco, x_d, y_d)
+        vortices_test, gammas = barnes.barnes_collatz(vortices_test, boundary_vortices, vel_inf, ada_dt, h, gammas, bd_gammas, N, visco, alpha)
 
         # error correction
         #for i in range(prec):
@@ -454,14 +453,14 @@ def mark_cut(free_vortices, r, x_d, y_d, free_gammas, cut_flag):
 if __name__ == '__main__':
 
     # initialization header
-    runtime = []
+    runtimes = []
     number_of_particles = []
     tracers = []
     t = 0
     count_plot = 0
     detatch_count = 0
 
-    # workbook = xlsxwriter.Workbook('runtime.xlsx')
+    # workbook = xlsxwriter.Workbook('C:/Users/herbi/Documents/Uni/numerik/runtime_3.xlsx')
     # worksheet = workbook.add_worksheet()
     t_plot = t_plot / 2
 
@@ -481,11 +480,11 @@ if __name__ == '__main__':
     free_vortices = boundary_vortices.copy()
 
     while t <= t_end:
-        tic = time.time()
+        # tic = time.time()
         count_plot += 1
         detatch_count += 1
 
-        free_vortices, free_gammas, ada_dt, cut_flag = adaptive_collatz(free_vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec, visco, x_d, y_d, free_gammas, boundary_gammas, t_detach, h, diffusion_method)
+        free_vortices, free_gammas, ada_dt, cut_flag = adaptive_collatz(free_vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec, visco, x_d, y_d, free_gammas, boundary_gammas, t_detach, h, diffusion_method, alpha)
         free_gammas = free_gammas - sum(free_gammas)/len(free_gammas) # normalize gammas to force conservation of energy
 
         cut_flag = np.array(cut_flag, dtype=bool)
@@ -515,22 +514,19 @@ if __name__ == '__main__':
                 plt.savefig(png_path + str(Re) + "t=" + str(t) + "_dt=" + str(dt) + "_detach=" + str(d_detach) + ".png")
 
         t = round(t+dt, 5)
-        toc = time.time()
-        runtime.append(toc-tic)
+        # toc = time.time()
+        # runtime.append(toc-tic)
+        # runtimes.append(runtime)
         number_of_particles.append(len(free_vortices))
 
 row = 0
 
-worksheet.write(row, 0, 'number of particles [1]')
-worksheet.write(row, 1, 'runtime [s]')
-row += 1
+# for run, num in zip(runtimes, number_of_particles):
+#     worksheet.write(row, 0, num)
+#     worksheet.write(row, 1, run)
+#     row += 1
 
-for run, num in zip(runtime, number_of_particles):
-    worksheet.write(row, 0, num)
-    worksheet.write(row, 1, run)
-    row += 1
-
-workbook.close()
+# workbook.close()
 
 print('to end simulation, press any key ...')
 print(input())
