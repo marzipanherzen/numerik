@@ -43,7 +43,8 @@ import matplotlib.cm as cm
 import time
 import numba
 import copy
-import xlsxwriter
+import xlsxwriter#
+import cmath
 
 ########################################################################################################################
 
@@ -51,8 +52,8 @@ import xlsxwriter
 N = 128                                 # number of cylinder boundary-segments
 Re = 10**3                              # Reynolds number
 dt = 0.01                               # update time of boundaries(for prec = 1 dt is also ODE-solver timestep!)
-d_detach = 5                            # detach boundary vortices every d_detatch timesteps
-
+d_detach = 4                            # detach boundary vortices every d_detatch timesteps
+grenzschichtdicke = 0.01
 # freestream
 u = -1.0                                # x-component of free velocity
 v = 0.0                                 # y-component of free velocity
@@ -69,17 +70,17 @@ merge_flag = False                      # True if merge is desired ; if 'viscous
 png_path = "Pictures\Parameterstudie"   # path where snapshots are saved
 
 # time
-t_end = 30                              # end time of simulation in s
-t_save = 30                             # timesteps at which a snapshot png is saved to png_path
-t_plot = 0.5                            # plot spacing
+t_end = 20                              # end time of simulation in s
+t_save = 0.1                            # timesteps at which a snapshot png is saved to png_path
+t_plot = 0.01                            # plot spacing
 
 diffusion_method = 'vortex_exchange'    # 'vortex_exchange' or 'viscous_vortex' or 'none'
 tracer_method = 'streamline'            # 'streamline' or none
 
 # domain
 r = D/2.0
-x_d = np.array([-20., 4.])
-y_d = np.array([-7., 7.])
+x_d = np.array([-10., 4.])
+y_d = np.array([-4., 4.])
 
 ########################################################################################################################
 
@@ -101,7 +102,7 @@ log = np.log
 # polar coordiniates: x = rcos(phi), y = rsin(phi)
 
 # diffusion range
-t_detach = round(dt*d_detach, 5) # time period after which boundary vortices are detached (relevant for H)
+t_detach = round(dt*d_detach, 6) # time period after which boundary vortices are detached (relevant for H)
 
 vel_inf = u + 1j * v
 visco = (sqrt((vel_inf.real)**2 + (vel_inf.imag)**2) * D) / Re
@@ -151,7 +152,7 @@ class liveplot:
         if self.lasttime + 1 > currtime:
             self.fig.canvas.draw()
         else:
-            plt.pause(1e-6)
+            plt.pause(1e-3)
             self.lasttime = time.time()
         return
 
@@ -203,7 +204,7 @@ class liveplot:
         # self.colorbar()
         self.draw()
         if save_plots:
-            # self.fig.savefig('./plots/quiver_plot_' + time_stamp + '_second')
+            self.fig.savefig('./plots/quiver_plot_' + time_stamp + '_second')
             self.save_fig()
         return
 
@@ -245,12 +246,22 @@ def boundary_vortices_create(N, ratio_KB, r, H):
     return boundary_vortices, boundary_gammas
 
 
-@njit(fastmath=True, parallel=True)
-def free_vortices_create(vortices, bd_vortices, gammas, bd_gammas, tracers, tracer_flag, visco, dt, r, H, h):
+#@njit(fastmath=True, parallel=True)
+def free_vortices_create(vortices, bd_vortices, gammas, bd_gammas, tracers, tracer_flag, visco, dt, r, H, h, normal, vel_inf, sep_flag):
+
+    velocity_new = induced_velocity(bd_vortices, vortices, h, gammas) + induced_velocity(bd_vortices, bd_vortices, h,
+                                                                                         bd_gammas) + vel_inf
+    velocity_new_normal = normal.real * velocity_new.real + normal.imag * velocity_new.imag
+
+    for i in range(len(bd_vortices)):
+        if velocity_new_normal[i]>0.0:
+            sep_flag[i] = True
+    add_vortices = bd_vortices[sep_flag]
+    add_gammas = bd_gammas[sep_flag]
 
     if tracer_flag==False:
-        vortices_new = np.zeros((len(vortices)+len(bd_vortices)), dtype=np.complex128)
-        gammas_new = np.zeros((len(vortices)+len(bd_vortices)))
+        vortices_new = np.zeros((len(vortices)+len(add_vortices)), dtype=np.complex128)
+        gammas_new = np.zeros((len(vortices) + len(add_vortices)))
     elif tracer_flag==True:
         vortices_new = np.zeros((len(vortices)+len(bd_vortices)+len(tracers)), dtype=np.complex128)
         gammas_new = np.zeros((len(vortices)+len(bd_vortices)+len(tracers)))
@@ -259,8 +270,10 @@ def free_vortices_create(vortices, bd_vortices, gammas, bd_gammas, tracers, trac
 
     vortices_new[:len(vortices)] = vortices
     gammas_new[:len(vortices)] = gammas
-    vortices_new[len(vortices):] = bd_vortices
-    gammas_new[len(vortices):] = bd_gammas
+    vortices_new[len(vortices):] = add_vortices
+    gammas_new[len(vortices):] = add_gammas
+
+    # divergenz check für wirbelablösungs flag
 
     return vortices_new, gammas_new
 
@@ -313,26 +326,26 @@ def induced_gammas(elements, h, gammas_1, visco):
             dxik = (elements[i].real - elements[k].real)**2
             dyik = (elements[i].imag - elements[k].imag)**2
             d2ik = dxik + dyik
-            u[i] += (gammas_1[k]-gammas_1[i]) * h**2 * visco * 4 * (5*d2ik - h)/((d2ik + h)**4)
+            u[i] += (gammas_1[k]-gammas_1[i]) * h**2 * visco * (16*d2ik - 8*h)/((d2ik + h)**4)
     return u
 
 
 @njit(fastmath=True, parallel=True)
-def vortex_exchange(elements, h, gammas, visco):
-    u = np.zeros((len(elements)), dtype=np.complex128)
-    gamma = np.zeros((len(elements)), dtype=np.float64)
-    for i in prange(len(elements)):
+def vortex_exchange(elements1, elements2, h, gammas1, gammas2, visco):
+    u = np.zeros((len(elements1)), dtype=np.complex128)
+    gamma = np.zeros((len(elements1)), dtype=np.float64)
+    for i in prange(len(elements1)):
         U = 0.0
         V = 0.0
-        for j in prange(len(elements)):
-            dx = elements[i].real - elements[j].real
-            dy = elements[i].imag - elements[j].imag
+        for j in prange(len(elements2)):
+            dx = elements1[i].real - elements2[j].real
+            dy = elements1[i].imag - elements2[j].imag
             d2 = dx**2 + dy**2
-            U -= (gammas[j]/(2*np.pi)) * (dy/(d2 + h))
-            V += (gammas[j]/(2*np.pi)) * (dx/(d2 + h))
+            U -= (gammas2[j]/(2*np.pi)) * (dy/(d2 + h))
+            V += (gammas2[j]/(2*np.pi)) * (dx/(d2 + h))
 
             u[i] = U + 1j * V
-            gamma[i] += (gammas[j]-gammas[i]) * h**2 * visco * 4 * (5*d2 - h)/((d2 + h)**4)
+            gamma[i] += (gammas2[j]-gammas1[i]) * h**2 * visco * 4 * (5*d2 - h)/((d2 + h)**4)
     return u, gamma
  
 @njit(fastmath=True, parallel=True)
@@ -382,23 +395,38 @@ def update_boundary_gammas(normal, free_vortices, control_points, A, Inv, vel_in
     b_t = np.dot(A.T, b)
     return np.dot(Inv, b_t)
 
-# convection
+@njit(fastmath=True, parallel=False)
+def get_omegas(boundary_vortices, boundary_gammas, h, free_vortices, free_gammas):
+
+    boundary_omegas = np.zeros((len(boundary_gammas)))
+
+    for i in prange(len(boundary_gammas)):
+        U = 0.0
+        for j in prange(len(boundary_gammas)):
+            d2 = ((boundary_vortices[i].real-boundary_vortices[j].real)**2 + (boundary_vortices[i].imag-boundary_vortices[j].imag)**2 + h)**2
+            U += boundary_gammas[j]*h/(d2*np.pi)
+        for k in prange(len(free_vortices)):
+            d2 = ((boundary_vortices[i].real - free_vortices[k].real)**2 + (boundary_vortices[i].imag - free_vortices[k].imag)**2 + h)**2
+            U += free_gammas[k]*h/(d2*np.pi)
+        boundary_omegas[i] = U
+
+    return boundary_omegas
 
 @njit(fastmath=True, parallel=True)
 def collatz_vec(vortices, bd_vortex, vel_inf, dt, h, gammas, bd_gammas, N, visco, diff_method):
 
     if diff_method == 'vortex_exchange':
-        u_fb_half_1, u_gamma_half = vortex_exchange(vortices, h, gammas, visco) # half step
-        u_fb_half_2 = induced_velocity(vortices, bd_vortex, h, bd_gammas) # half step
+        u_fb_half_1, u_gamma_half1 = vortex_exchange(vortices, vortices, h, gammas, gammas, visco) # half step
+        u_fb_half_2, u_gamma_half2 = vortex_exchange(vortices, bd_vortex, h, gammas, bd_gammas, visco) # half step
 
         mid_points = vortices + (u_fb_half_1 + u_fb_half_2 + vel_inf)*0.5*dt
-        mid_gammas = gammas + u_gamma_half*0.5*dt
+        mid_gammas = gammas + (u_gamma_half1 + u_gamma_half2)*0.5*dt
 
-        u_fb_1, u_gamma = vortex_exchange(mid_points, h, mid_gammas, visco) # half step
-        u_fb_2 = induced_velocity(mid_points, bd_vortex, h, bd_gammas)               # full step
+        u_fb_1, u_gamma1 = vortex_exchange(mid_points, mid_points, h, mid_gammas, mid_gammas, visco) # half step
+        u_fb_2, u_gamma2 = vortex_exchange(mid_points, bd_vortex, h, mid_gammas, bd_gammas, visco)               # full step
 
         vortices += (u_fb_1 + u_fb_2 + vel_inf) * dt
-        gammas += u_gamma*dt
+        gammas += (u_gamma1 + u_gamma2)*dt
     elif diff_method == 'viscous_vortex':
         u_fb_half_1 = viscous_vortex(vortices, h, gammas, visco)  # half step
         u_fb_half_2 = induced_velocity(vortices, bd_vortex, h, bd_gammas)  # half step
@@ -423,11 +451,12 @@ def collatz_vec(vortices, bd_vortex, vel_inf, dt, h, gammas, bd_gammas, N, visco
     return vortices, gammas
 
 @njit(fastmath=True, parallel=True)
-def adaptive_collatz(vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec, visco, x_d, y_d, gammas, bd_gammas, t_detach, h, diffusion_method, merge_flag):
+def adaptive_collatz(vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec, visco, x_d, y_d, gammas, bd_gammas, t_detach, h, diffusion_method, merge_flag, H):
 
     t = 0
     flag = False
     cut_flag = np.zeros((len(vortices)))
+    ada_dt = dt
 
     while t < dt:
 
@@ -468,27 +497,27 @@ def adaptive_collatz(vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec
             t += ada_dt
 
             vortices = random_walk(vortices_correct, 1/visco, ada_dt)  # random diffusion term, affected by viscosity ?
-            cut_flag, gammas = mark_cut(vortices, r, x_d, y_d, gammas_correct, cut_flag, merge_flag)  # delete free vortices outside boundary (inside cylinder); delete close vortices, create vortices where redist failed
+            cut_flag, gammas = mark_cut(vortices, r, x_d, y_d, gammas_correct, cut_flag, merge_flag, H)  # delete free vortices outside boundary (inside cylinder); delete close vortices, create vortices where redist failed
 
-        ada_dt = 0.9 * (min((tol / (error + 10**-8)) ** 0.5, 10)) * ada_dt
+        #ada_dt = 0.9 * (min((tol / (error + 10**-8)) ** 0.5, 10)) * ada_dt
+        ada_dt = dt
 
     return vortices, gammas, ada_dt, cut_flag
 
-# diffusion
 @njit(fastmath=True, parallel=True)
 def random_walk(vortices, R_ch, dt):
     N = len(vortices)
-    sigma = sqrt(2*dt/R_ch)                                            # Chorin: sigma = (2*t)/R
+    sigma = sqrt(2*dt/R_ch)
     mean = 0.0
     gaussian_pos = np.random.normal(mean, sigma, N) + 1j*np.random.normal(mean, sigma, N)
     vortices += gaussian_pos
     return vortices
 
 @njit(fastmath=True, parallel=True)
-def mark_cut(free_vortices, r, x_d, y_d, free_gammas, cut_flag, merge_flag):
+def mark_cut(free_vortices, r, x_d, y_d, free_gammas, cut_flag, merge_flag, H):
 
     for i in prange(len(free_vortices)):
-        if (free_vortices[i].real)**2 + (free_vortices[i].imag)**2 <= r**2 or free_vortices[i].real < x_d[0] or free_vortices[i].real > x_d[1] or free_vortices[i].imag < y_d[0] or free_vortices[i].imag > y_d[1]:
+        if (free_vortices[i].real)**2 + (free_vortices[i].imag)**2 <= (r + H)**2 or free_vortices[i].real < x_d[0] or free_vortices[i].real > x_d[1] or free_vortices[i].imag < y_d[0] or free_vortices[i].imag > y_d[1]:
             cut_flag[i] = 1
             free_gammas[i] = 0.0
 
@@ -524,20 +553,30 @@ if __name__ == '__main__':
 
     runtime = []
     number_of_particles = []
+    frequency_check_particles = []
+    u_tangential = []
     tracers = []
+    boundary_gammas_med = []
+    boundary_gammas_grenz = []
+    boundary_pos_grenz = []
     t = 0
     count_plot = 0
     detatch_count = 0
+    mean_count = 0
 
-    workbook = xlsxwriter.Workbook('runtime.xlsx')
-    worksheet = workbook.add_worksheet()
-    t_plot = t_plot / 2
+    workbook = xlsxwriter.Workbook('analysis.xlsx')
+    worksheet1 = workbook.add_worksheet()
+    worksheet2 = workbook.add_worksheet()
+    worksheet3 = workbook.add_worksheet()
+    worksheet4 = workbook.add_worksheet()
 
     if plot_flag:
         plot = liveplot()
 
     # start of main code
-    normal, control_points, z1 = segments_create(r, N)                                  # create N boundary segments on a circle with radius r;  purely geometric
+    normal, control_points, z1 = segments_create(r, N)
+    tangent = normal.imag - 1j * normal.real
+    # create N boundary segments on a circle with radius r;  purely geometric
     boundary_vortices, boundary_gammas = boundary_vortices_create(N, ratio_CB, r, H)    # first introduction of flow carrying vortices
     A, Inv = matrix_A_create(boundary_vortices, h, normal, control_points)              # create matrix of induced boundary velocity
     b = -(vel_inf.real * normal.real + vel_inf.imag * normal.imag)
@@ -547,13 +586,16 @@ if __name__ == '__main__':
     boundary_gammas = boundary_gammas/2
     free_gammas = boundary_gammas.copy()
     free_vortices = boundary_vortices.copy()
+    boundary_omegas = np.zeros((int((t_end/dt)), len(boundary_gammas)))
+    boundary_cp = np.zeros((int((t_end/dt)), len(boundary_gammas)))
 
-    while t <= t_end:
+    while t < t_end:
         tic = time.time()
         count_plot += 1
         detatch_count += 1
+        freq_chk = 0
 
-        free_vortices, free_gammas, ada_dt, cut_flag = adaptive_collatz(free_vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec, visco, x_d, y_d, free_gammas, boundary_gammas, t_detach, h, diffusion_method, merge_flag)
+        free_vortices, free_gammas, ada_dt, cut_flag = adaptive_collatz(free_vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec, visco, x_d, y_d, free_gammas, boundary_gammas, t_detach, h, diffusion_method, merge_flag, H)
         #free_gammas = free_gammas - sum(free_gammas)/len(free_gammas) # normalize gammas to force conservation of energy
 
         cut_flag = np.array(cut_flag, dtype=bool)
@@ -570,8 +612,8 @@ if __name__ == '__main__':
         if detatch_count == int(t_detach/dt):
             detatch_count = 0
             boundary_gammas = boundary_gammas/2
-            free_vortices, free_gammas = free_vortices_create(free_vortices, boundary_vortices, free_gammas, boundary_gammas, tracers_add, tracer_flag, visco, ada_dt, r, H, h)
-
+            sep_flag = np.zeros((len(boundary_gammas)), dtype=np.bool)
+            free_vortices, free_gammas = free_vortices_create(free_vortices, boundary_vortices, free_gammas, boundary_gammas, tracers_add, tracer_flag, visco, ada_dt, r, H, h, normal, vel_inf, sep_flag)
 
         if plot_flag:
             if count_plot == int(t_plot/dt):
@@ -582,23 +624,90 @@ if __name__ == '__main__':
             if int(t/dt) % int(t_save/dt) == 0:
                 plt.savefig(png_path + str(Re) + "t=" + str(t) + "_dt=" + str(dt) + "_detach=" + str(d_detach) + ".png")
 
+        boundary_omegas[mean_count, :] = get_omegas(boundary_vortices, boundary_gammas, h, free_vortices, free_gammas)
+        boundary_cp[mean_count, :] = boundary_gammas/dt
+
+        mean_count += 1
         t = round(t+dt, 5)
         toc = time.time()
         runtime.append(toc-tic)
         number_of_particles.append(len(free_vortices))
+        grenz_flag = np.zeros((len(free_vortices)), dtype=bool)
+
+        for i in range(len(free_vortices)):
+            if free_vortices[i].real < -5.0 and free_vortices[i].real > -5.2:
+                freq_chk += 1
+            if abs(free_vortices[i])<r+H+grenzschichtdicke:
+                grenz_flag[i]=True
+
+        frequency_check_particles.append(freq_chk)
+
+        uT = induced_velocity(boundary_vortices, boundary_vortices, h, boundary_gammas) + induced_velocity(boundary_vortices, free_vortices, h, free_gammas) + vel_inf
+        u_tangential.append(tangent.real*uT.real + tangent.imag*uT.imag)
+        boundary_gammas_med.append(boundary_gammas)
+        phase = np.angle(free_vortices[grenz_flag], deg=True)
+        boundary_pos_grenz.append(np.rint(phase))
+        boundary_gammas_grenz.append(free_gammas[grenz_flag])
 
 row = 0
 
-worksheet.write(row, 0, 'number of particles [1]')
-worksheet.write(row, 1, 'runtime [s]')
+boundary_omegas = sum(boundary_omegas)/(t_end/dt)
+boundary_cp = sum(boundary_cp)/(t_end/dt)
+u_tangential = sum(u_tangential)/(t_end/dt)
+boundary_gammas_med = sum(boundary_gammas_med)/(t_end/dt)
+
+Cp = np.ones((N))
+delta_omega = np.zeros((N))
+flow_sep_idx = np.zeros((N))
+
+for i in range(N):
+    if i == 0:
+        if boundary_omegas[0]*boundary_omegas[N - 1] < 0.0:
+            flow_sep_idx[0] = 1
+    else:
+        if boundary_omegas[i]*boundary_omegas[i - 1] < 0.0:
+            flow_sep_idx[i] = 1
+        dx = boundary_vortices[i].real - boundary_vortices[i - 1].real
+        dy = boundary_vortices[i].imag - boundary_vortices[i - 1].imag
+        ds = np.sqrt(dx**2 + dy**2)
+        Cp[i] = Cp[i - 1] - ((boundary_cp[i] + boundary_cp[i - 1])/(vel_inf.real ** 2 + vel_inf.imag ** 2)) * ds
+
+worksheet1.write(row, 0, 'number of particles [1]')
+worksheet1.write(row, 1, 'runtime [s]')
+worksheet2.write(row, 2, 'boundary omegas')
+worksheet2.write(row, 3, 'separation flag')
+worksheet1.write(row, 4, 'particles in check area')
+worksheet2.write(row, 5, 'Cd')
+worksheet2.write(row, 6, 'tangential velocity')
+worksheet2.write(row, 7, 'friction')
+worksheet2.write(row, 8, 'boundary_gammas')
+
 row += 1
 
-for run, num in zip(runtime, number_of_particles):
-    worksheet.write(row, 0, num)
-    worksheet.write(row, 1, run)
+for run, num, freq in zip(runtime, number_of_particles, frequency_check_particles):
+    worksheet2.write(row, 0, num)
+    worksheet2.write(row, 1, run)
+    worksheet2.write(row, 4, freq)
+    row += 1
+
+row = 1
+for omeg, sep, pressure, u_tan, tau, bdg in zip(boundary_omegas, flow_sep_idx, Cp, u_tangential, u_tangential*visco/H, boundary_gammas_med):
+    worksheet1.write(row, 2, omeg)
+    worksheet1.write(row, 3, sep)
+    worksheet1.write(row, 5, pressure)
+    worksheet1.write(row, 6, u_tan)
+    worksheet1.write(row, 7, tau)
+    worksheet1.write(row, 8, bdg)
+    row += 1
+
+row = 1
+for med_pos, med_gam in zip(boundary_pos_grenz, boundary_gammas_grenz):
+    for i in range(len(med_pos)):
+        worksheet3.write(row, i, med_pos[i])
+        worksheet4.write(row, i, med_gam[i])
     row += 1
 
 workbook.close()
 
-print('to end simulation, press any key ...')
-print(input())
+#print('to end simulation, press any key ...')
+#print(input())
