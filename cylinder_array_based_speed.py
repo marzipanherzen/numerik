@@ -42,7 +42,7 @@ import time
 import numba
 import copy
 import xlsxwriter
-import barneshut_old as barnes
+import barneshut as barnes
 
 ########################################################################################################################
 
@@ -69,7 +69,7 @@ png_path = "Pictures\Parameterstudie"   # path where snapshots are saved
 # time
 t_end = 25                             #   end time of simulation in s
 t_save = 30                             #   timesteps at which a snapshot png is saved to png_path
-t_plot = 0.01                            #   plot spacing
+t_plot = 0.5                            #   plot spacing
 
 diffusion_method = 'diffusion'          # 'diffusion' or 'viscous_vortex' or 'none'
 tracer_method = 'streamline'            # 'streamline' or none
@@ -90,7 +90,7 @@ min_step = 10**-5       #   minimum adaptive stepsize allowed
 prec = 1                #   precicion of error correction (if prec = 1 dt becomes timestep)
 ada_dt = (tol**(1/2))/4 #   initial timestep
 
-alpha = 0.8 # tolerance for determining barnes hut octa tree 
+alpha = 0.5 # tolerance for determining barnes hut octa tree 
 
 ########################################################################################################################
 sin = np.sin
@@ -387,7 +387,7 @@ def adaptive_collatz(vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec
         vortices_correct = vortices.copy()
 
         # regular step
-        vortices_test, gammas = barnes.barnes_collatz(vortices_test, boundary_vortices, vel_inf, ada_dt, h, gammas, bd_gammas, N, visco, alpha, x_d, y_d)
+        vortices_test, gammas = barnes.barnes_collatz(vortices_test, boundary_vortices, vel_inf, ada_dt, h, gammas, bd_gammas, N, visco, alpha)
 
         # error correction
         #for i in range(prec):
@@ -517,7 +517,7 @@ if __name__ == '__main__':
         # toc = time.time()
         # runtime.append(toc-tic)
         # runtimes.append(runtime)
-        # number_of_particles.append(len(free_vortices))
+        number_of_particles.append(len(free_vortices))
 
 row = 0
 

@@ -14,6 +14,7 @@ created 16/04/2021 by @V. Herbig
 import math
 import numpy as np
 from numba import njit, prange
+# import scipy.spatial.distance as distance
 import time
 
 alpha = 0.5
@@ -34,17 +35,17 @@ class Branch:
         self.yLeaf = None
         self.GLeaf = None
 
-def insertPoint(x,y,G,branch):
+def insertPoint(x,y,G,h,branch):
     '''
     Insert a vortex into the tree using the following recursive procedure \\
     i) if branch does not contain a vortex, put vortex as leaf here \\
-    ii) if branch is a child (internal branch), update the center-of-vorticity and total vorticity. \\
+    ii) if branch is a child (internal branch), update the multipole coefficient and total vorticity. \\
         recursively insert the vortex in the appropriate quadrant
     iii) if branch is a leaf (external branch), then there are two vortices in the same region.
         subdivide the region further by creating children. then, recursively insert both vortices into the appropriate quadrant(s).
         since both vortices may still end up in the same quadrant, there may be several subdivisions during
         a single insertion. \\
-        Finally, update the center-of-vorticity and total vorticity of branch
+        Finally, update the multipole coefficient and total vorticity of branch
     '''
     if not branch.hasChild and not branch.hasLeaf:
         branch.xLeaf = x
@@ -56,46 +57,61 @@ def insertPoint(x,y,G,branch):
             if branch.xLeaf < branch.xm:
                 if branch.yLeaf < branch.ym: # SW
                     branch.children[1] = Branch(branch.xm-branch.D/4,branch.ym-branch.D/4,branch.D/2)
-                    insertPoint(branch.xLeaf,branch.yLeaf,branch.GLeaf,branch.children[1])
+                    insertPoint(branch.xLeaf,branch.yLeaf,branch.GLeaf,h,branch.children[1])
                 else: # NW
                     branch.children[0] = Branch(branch.xm-branch.D/4,branch.ym+branch.D/4,branch.D/2)
-                    insertPoint(branch.xLeaf,branch.yLeaf,branch.GLeaf,branch.children[0])
+                    insertPoint(branch.xLeaf,branch.yLeaf,branch.GLeaf,h,branch.children[0])
             else:
                 if branch.yLeaf < branch.ym: # SE
                     branch.children[2] = Branch(branch.xm+branch.D/4,branch.ym-branch.D/4,branch.D/2)
-                    insertPoint(branch.xLeaf,branch.yLeaf,branch.GLeaf,branch.children[2])
+                    insertPoint(branch.xLeaf,branch.yLeaf,branch.GLeaf,h,branch.children[2])
                 else: # NE
                     branch.children[3] = Branch(branch.xm+branch.D/4,branch.ym+branch.D/4,branch.D/2)
-                    insertPoint(branch.xLeaf,branch.yLeaf,branch.GLeaf,branch.children[3])
+                    insertPoint(branch.xLeaf,branch.yLeaf,branch.GLeaf,h,branch.children[3])
             branch.hasLeaf = False
 
-            branch.xLeaf = branch.xLeaf - branch.xm # switch from leaf-data to multipole-coefficient
-            branch.yLeaf = branch.yLeaf - branch.ym # same as above
+            branch.xLeaf = (branch.xLeaf - branch.xm) * branch.GLeaf # switch from leaf-data to multipole-coefficient
+            branch.yLeaf = (branch.yLeaf - branch.ym) * branch.GLeaf # same as above
 
-        if x < branch.xm:
-            if y < branch.ym:
-                if branch.children[1] == None: # SW
-                    branch.children[1] = Branch(branch.xm-branch.D/4,branch.ym-branch.D/4,branch.D/2)
-                insertPoint(x,y,G,branch.children[1])
-            else: # NW
-                if branch.children[0] == None:
-                    branch.children[0] = Branch(branch.xm-branch.D/4,branch.ym+branch.D/4,branch.D/2)
-                insertPoint(x,y,G,branch.children[0])
-        else:
-            if y < branch.ym: # SE
-                if branch.children[2] == None:
-                    branch.children[2] = Branch(branch.xm+branch.D/4,branch.ym-branch.D/4,branch.D/2)
-                insertPoint(x,y,G,branch.children[2])
-            else: # NE
-                if branch.children[3] == None:
-                    branch.children[3] = Branch(branch.xm+branch.D/4,branch.ym+branch.D/4,branch.D/2)
-                insertPoint(x,y,G,branch.children[3])            
-        branch.hasChild = True
+        if branch.D > h:
+            if x < branch.xm:
+                if y < branch.ym:
+                    if branch.children[1] == None: # SW
+                        branch.children[1] = Branch(branch.xm-branch.D/4,branch.ym-branch.D/4,branch.D/2)
+                    insertPoint(x,y,G,h,branch.children[1])
+                else: # NW
+                    if branch.children[0] == None:
+                        branch.children[0] = Branch(branch.xm-branch.D/4,branch.ym+branch.D/4,branch.D/2)
+                    insertPoint(x,y,G,h,branch.children[0])
+            else:
+                if y < branch.ym: # SE
+                    if branch.children[2] == None:
+                        branch.children[2] = Branch(branch.xm+branch.D/4,branch.ym-branch.D/4,branch.D/2)
+                    insertPoint(x,y,G,h,branch.children[2])
+                else: # NE
+                    if branch.children[3] == None:
+                        branch.children[3] = Branch(branch.xm+branch.D/4,branch.ym+branch.D/4,branch.D/2)
+                    insertPoint(x,y,G,h,branch.children[3])            
+            branch.hasChild = True
 
-        branch.xLeaf += x-branch.xm # distance to geometric center
-        branch.yLeaf += y-branch.ym 
+        branch.xLeaf += (x-branch.xm) * G # distance to geometric center
+        branch.yLeaf += (y-branch.ym) * G 
         branch.GLeaf += G # total vorticity increases
 
+def create_tree(elements,buffer=0.05,name=None):
+    x_dist = math.hypot(min(elements.real),max(elements.real))
+    y_dist = math.hypot(min(elements.imag),max(elements.imag))
+    D = max(x_dist,y_dist)
+    x_m = min(elements.real) + x_dist / 2
+    y_m = min(elements.imag) + y_dist / 2
+
+    tree = Branch(x_m,y_m,D+buffer)
+    if name is not None:
+        tree.name = name
+
+    return tree
+
+@njit(fastmath=True, parallel=False)
 def calculations(x1,x2,y1,y2,G2,h,multi_flag=False,multi_x=None,multi_y=None,gammas_flag=False,G1=None,visco=None): 
     '''
     Calculate velocity and vorticity induced from one vortice one the other \\
@@ -114,8 +130,8 @@ def calculations(x1,x2,y1,y2,G2,h,multi_flag=False,multi_x=None,multi_y=None,gam
     V = (G2/(2*np.pi)) * (dx/d2)
 
     if multi_flag:
-        U -= G2 * (1/(2*np.pi)) * (1/(d2**2)) * (2*dx*dy * multi_x + (- dx**2 + dy**2 - h) * multi_y)
-        V -= G2 * (1/(2*np.pi)) * (1/(d2**2)) * ((- dx**2 + dy**2 + h) * multi_x - 2*dx*dy * multi_y)
+        U -= (1/(2*np.pi)) * (1/(d2**2)) * (2*dx*dy * multi_x + (- dx**2 + dy**2 - h) * multi_y)
+        V -= (1/(2*np.pi)) * (1/(d2**2)) * ((- dx**2 + dy**2 + h) * multi_x - 2*dx*dy * multi_y)
 
     w = None
     if gammas_flag:
@@ -123,13 +139,15 @@ def calculations(x1,x2,y1,y2,G2,h,multi_flag=False,multi_x=None,multi_y=None,gam
 
     return U+1j*V, w
 
-def barnes_exchange(x,y,h,G,branch,visco,alpha,vel=0+0j,w=0):
+def barnes_exchange(x,y,h,G,branch,visco,alpha):
     '''
     Walk through entire branch and compute induced velocity and vorticity on current vortice \\
     x, y, G -     position and vorticity of current vortice \\
     branch -    specifies the current branch that is checked (initialize with "root") \\
     alpha -     the threshold value that determines whether further parts of the branch are checked-out
     '''
+    vel = 0.0 + 0.0j
+    w = 0.0
     if branch.hasLeaf:
         if not branch.xLeaf == x and not branch.yLeaf == y:
             U, W = calculations(x,branch.xLeaf,y,branch.yLeaf,branch.GLeaf,h,multi_flag=False,gammas_flag=True,G1=G,visco=visco)
@@ -144,55 +162,53 @@ def barnes_exchange(x,y,h,G,branch,visco,alpha,vel=0+0j,w=0):
         else:
             for child in branch.children: 
                 if child is not None:
-                    U, W = barnes_exchange(x,y,h,G,child,visco,alpha,vel,w)
+                    U, W = barnes_exchange(x,y,h,G,child,visco,alpha)
                     vel += U
                     w += W
 
     return vel, w
 
-def barnes_collatz(vortices, bd_vortices, vel_inf, dt, h, gammas, bd_gammas, N, visco, alpha, x_d, y_d):
-    # first collatz step
-    # create initial tree with center in the middle of domain 
-    xm_root = x_d[0] + math.sqrt( ((x_d[0]-x_d[1])**2) ) / 2
-    ym_root = y_d[0] + math.sqrt( ((y_d[0]-y_d[1])**2) ) / 2
-    D_root = max(math.sqrt( ((x_d[0]-x_d[1])**2) ), math.sqrt( ((y_d[0]-y_d[1])**2) ))
-    root_half = Branch(xm_root,ym_root,D_root)
-    root_half.name = 'root_half'
+def barnes_collatz(vortices, bd_vortices, vel_inf, dt, h, gammas, bd_gammas, N, visco, alpha):
+    ### first collatz step ###
+    # create initial trees 
+    root_half = create_tree(vortices,name='root_half')
+    root_bd = create_tree(bd_vortices,name='root_bd')
 
-    # insert all free vortices
-    # tic = time.time()
+    # insert all free vortices in one and all boundary vortices in the other tree
+    tic = time.time()
     for i in prange(len(vortices)):
-        insertPoint(vortices[i].real,vortices[i].imag,gammas[i],root_half)
-    # toc = time.time()
-    # runtime = toc-tic
+        insertPoint(vortices[i].real,vortices[i].imag,gammas[i],h,root_half)
+    toc = time.time()
+    runtime = toc-tic
     # print("Time to insert {} particles in octree is {}s." .format(len(vortices), toc-tic))
+    for k in prange(len(bd_vortices)):
+        insertPoint(bd_vortices[k].real,bd_vortices[k].imag,bd_gammas[k],h,root_bd)
 
     # half step
     u_half = np.zeros((len(vortices)), dtype = np.complex128)
     w_gamma_half = np.zeros((len(vortices)), dtype = np.float64)
     for j in prange(len(vortices)):
         u_half[j], w_gamma_half[j] = barnes_exchange(vortices[j].real,vortices[j].imag,h,gammas[j],root_half,visco,alpha)
-        for k in prange(len(bd_vortices)):
-            vel, w = calculations(vortices[j].real,bd_vortices[k].real,vortices[j].imag,bd_vortices[k].imag,bd_gammas[k],h,multi_flag=False,gammas_flag=False)
-            u_half[j] += vel
+        u_bd, w_bd = barnes_exchange(vortices[j].real,vortices[j].imag,h,gammas[j],root_bd,visco,alpha)
+        u_half[j] += u_bd
 
     mid_points = vortices + (u_half + vel_inf)*0.5*dt
     mid_gammas = gammas + w_gamma_half*0.5*dt
 
-    # second collatz step
-    root_full = Branch(xm_root,ym_root,D_root)
+    ### second collatz step ###
+    # create mid tree for free vortices
+    root_full = create_tree(mid_points,name='root_full')
 
     # insert all mid points
     for i in prange(len(mid_points)):
-        insertPoint(mid_points[i].real,mid_points[i].imag,gammas[i],root_full)
+        insertPoint(mid_points[i].real,mid_points[i].imag,gammas[i],h,root_full)
 
     u_full = np.zeros((len(mid_points)), dtype = np.complex128)
     w_gamma_full = np.zeros((len(vortices)), dtype = np.float64)
     for j in prange(len(mid_points)):
         u_full[j], w_gamma_full[j] = barnes_exchange(mid_points[j].real,mid_points[j].imag,h,gammas[j],root_full,visco,alpha)
-        for k in prange(len(bd_vortices)):
-            vel, w = calculations(mid_points[j].real,bd_vortices[k].real,mid_points[j].imag,bd_vortices[k].imag,bd_gammas[k],h,multi_flag=False,gammas_flag=False)
-            u_full[j] += vel
+        u_bd, w_bd = barnes_exchange(mid_points[j].real,mid_points[j].imag,h,gammas[j],root_bd,visco,alpha)
+        u_full[j] += u_bd
 
     vortices += (u_full + vel_inf)*dt
     gammas += w_gamma_full*dt
