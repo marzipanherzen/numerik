@@ -557,8 +557,8 @@ if __name__ == '__main__':
     u_tangential = []
     tracers = []
     boundary_gammas_med = []
-    boundary_gammas_grenz = []
-    boundary_pos_grenz = []
+    boundary_gammas_grenz = np.zeros(1)
+    boundary_pos_grenz = np.zeros(1)
     t = 0
     count_plot = 0
     detatch_count = 0
@@ -646,8 +646,8 @@ if __name__ == '__main__':
         u_tangential.append(tangent.real*uT.real + tangent.imag*uT.imag)
         boundary_gammas_med.append(boundary_gammas)
         phase = np.angle(free_vortices[grenz_flag], deg=True)
-        boundary_pos_grenz.append(np.rint(phase))
-        boundary_gammas_grenz.append(free_gammas[grenz_flag])
+        boundary_gammas_grenz = np.vstack(boundary_gammas_grenz, free_gammas[grenz_flag])
+        boundary_pos_grenz = np.vstack(boundary_pos_grenz, np.rint(phase))
 
 row = 0
 
@@ -674,37 +674,50 @@ for i in range(N):
 
 worksheet1.write(row, 0, 'number of particles [1]')
 worksheet1.write(row, 1, 'runtime [s]')
-worksheet2.write(row, 2, 'boundary omegas')
-worksheet2.write(row, 3, 'separation flag')
-worksheet1.write(row, 4, 'particles in check area')
-worksheet2.write(row, 5, 'Cd')
-worksheet2.write(row, 6, 'tangential velocity')
-worksheet2.write(row, 7, 'friction')
-worksheet2.write(row, 8, 'boundary_gammas')
+worksheet1.write(row, 2, 'particles in check area')
+
+worksheet2.write(row, 0, 'boundary omegas')
+worksheet2.write(row, 1, 'separation flag')
+worksheet2.write(row, 2, 'Cd')
+worksheet2.write(row, 3, 'tangential velocity')
+worksheet2.write(row, 4, 'friction')
+worksheet2.write(row, 5, 'boundary_gammas')
 
 row += 1
 
 for run, num, freq in zip(runtime, number_of_particles, frequency_check_particles):
     worksheet2.write(row, 0, num)
     worksheet2.write(row, 1, run)
-    worksheet2.write(row, 4, freq)
+    worksheet2.write(row, 2, freq)
     row += 1
 
 row = 1
 for omeg, sep, pressure, u_tan, tau, bdg in zip(boundary_omegas, flow_sep_idx, Cp, u_tangential, u_tangential*visco/H, boundary_gammas_med):
-    worksheet1.write(row, 2, omeg)
-    worksheet1.write(row, 3, sep)
-    worksheet1.write(row, 5, pressure)
-    worksheet1.write(row, 6, u_tan)
-    worksheet1.write(row, 7, tau)
-    worksheet1.write(row, 8, bdg)
+    worksheet1.write(row, 0, omeg)
+    worksheet1.write(row, 1, sep)
+    worksheet1.write(row, 2, pressure)
+    worksheet1.write(row, 3, u_tan)
+    worksheet1.write(row, 4, tau)
+    worksheet1.write(row, 5, bdg)
     row += 1
 
+boundary = np.hstack(boundary_pos_grenz, boundary_gammas_grenz)
+boundary = np.sort(boundary)
+
 row = 1
-for med_pos, med_gam in zip(boundary_pos_grenz, boundary_gammas_grenz):
-    for i in range(len(med_pos)):
-        worksheet3.write(row, i, med_pos[i])
-        worksheet4.write(row, i, med_gam[i])
+bd = []
+
+for i in range(360):
+    temp = []
+    for j in range(len(boundary)):
+        if boundary[0] == i:
+            temp.append(boundary[1])
+    avg_gamma = sum(temp)/len(temp)
+    bd.append(avg_gamma)
+
+for b in bd:
+
+    worksheet3.write(row, 0, b)
     row += 1
 
 workbook.close()
