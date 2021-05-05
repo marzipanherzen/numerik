@@ -47,9 +47,9 @@ import barneshut as barnes
 ########################################################################################################################
 
 ### -- PARAMETER HEADER -- ###
-N = 128         #   number of cylinder boundary-segments
+N = 256         #   number of cylinder boundary-segments
 Re = 10**3      #   Reynolds number
-dt = 0.05     #   update time of boundaries(for prec = 1 dt is also ODE-solver timestep!)
+dt = 0.01     #   update time of boundaries(for prec = 1 dt is also ODE-solver timestep!)
 d_detach = 2    #   detach boundary vortices every d_detatch timesteps
 
 # freestream
@@ -69,7 +69,7 @@ png_path = "Pictures\Parameterstudie"   # path where snapshots are saved
 # time
 t_end = 25                             #   end time of simulation in s
 t_save = 30                             #   timesteps at which a snapshot png is saved to png_path
-t_plot = 0.5                            #   plot spacing
+t_plot = 0.01                           #   plot spacing
 
 diffusion_method = 'diffusion'          # 'diffusion' or 'viscous_vortex' or 'none'
 tracer_method = 'streamline'            # 'streamline' or none
@@ -90,7 +90,7 @@ min_step = 10**-5       #   minimum adaptive stepsize allowed
 prec = 1                #   precicion of error correction (if prec = 1 dt becomes timestep)
 ada_dt = (tol**(1/2))/4 #   initial timestep
 
-alpha = 0.5 # tolerance for determining barnes hut octa tree 
+alpha = 0.2 # tolerance for determining barnes hut octa tree 
 
 ########################################################################################################################
 sin = np.sin
@@ -462,7 +462,7 @@ if __name__ == '__main__':
 
     # workbook = xlsxwriter.Workbook('C:/Users/herbi/Documents/Uni/numerik/runtime_3.xlsx')
     # worksheet = workbook.add_worksheet()
-    t_plot = t_plot / 2
+    # t_plot = t_plot / 2
 
     if plot_flag:
         plot = liveplot()
@@ -508,6 +508,7 @@ if __name__ == '__main__':
             if count_plot == int(t_plot/dt):
                 count_plot = 0
                 plot.scatter_cylinder(round(t, 1), free_vortices[len(free_vortices)-len(tracers):], control_points, boundary_vortices, free_vortices, x_d, y_d, boundary_gammas, free_gammas)
+                a=5
 
         if save_flag:
             if int(t/dt) % int(t_save/dt) == 0:
