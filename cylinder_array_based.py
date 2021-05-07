@@ -46,6 +46,7 @@ import time
 import xlsxwriter#
 #import cmath
 
+
 ########################################################################################################################
 
 ### -- PARAMETER HEADER -- ###
@@ -67,6 +68,7 @@ tracer_flag = False                     # True if tracers are desired
 save_flag = False                        # True if save is desired
 merge_flag = True                      # True if merge is desired ; if 'viscous_vortex' is chosen, merge_flag is always True
 
+
 png_path = "Pictures\Parameterstudie"   # path where snapshots are saved
 
 # time
@@ -75,12 +77,14 @@ t_save = 55                            # timesteps at which a snapshot png is sa
 t_plot = 0.1                            # plot spacing
 
 diffusion_method = 'viscous_vortex'    # 'vortex_exchange' or 'viscous_vortex' or 'none'
+
 tracer_method = 'streamline'            # 'streamline' or none
 
 # domain
 r = D/2.0
 x_d = np.array([-40., 3.])
 y_d = np.array([-5., 5.])
+
 
 ########################################################################################################################
 
@@ -92,6 +96,7 @@ tol = 10**-4                        # absolute error tolerance in adaptive colla
 min_step = 10**-5                   # minimum adaptive stepsize allowed
 prec = 1                            # precicion of error correction (if prec = 1 dt becomes timestep)
 ada_dt = (tol**(1/2))/4             # initial timestep
+
 
 ########################################################################################################################
 sin = np.sin
@@ -153,6 +158,7 @@ class liveplot:
             self.fig.canvas.draw()
         else:
             plt.pause(1e-3)
+
             self.lasttime = time.time()
         return
 
@@ -198,6 +204,7 @@ class liveplot:
         self.ax.scatter(xc, yc, s=5, c="k", marker='.')
         #self.ax.scatter(xv, yv, s=2, c='g')
         self.ax.scatter(xv, yv, s=1, c= gv, cmap='seismic', vmin=-.01, vmax=.01, marker='.')
+
         self.ax.scatter(x_trace,y_trace,c='g', s=3, marker='.')
         self.ax.set_title('Time = ' + time_stamp + 's')
         # self.ax.axis('equal')
@@ -205,6 +212,7 @@ class liveplot:
         self.draw()
         if save_plots:
             self.fig.savefig('./plots/quiver_plot_' + time_stamp + '_second')
+
             self.save_fig()
         return
 
@@ -213,6 +221,7 @@ def segments_create(r, N):
 
     # split cylinder into equal segments
     segment_endpoints = [r*cos(phi*np.pi) + 1j*r*sin(phi*np.pi) for phi in np.arange(1/N, 2+(1/N), 2/N)]
+
 
     # generate inclination of segment from vertical
     theta = -((2*np.pi)/N)
@@ -279,10 +288,10 @@ def free_vortices_create(vortices, bd_vortices, gammas, bd_gammas, tracers, trac
 
     # divergenz check für wirbelablösungs flag
 
+
     return vortices_new, gammas_new
 
 # bascis
-
 '''
 induced_velocity:
     calculates velocity field at pos of elements_1 induced by elements_2
@@ -297,6 +306,7 @@ adaptive_collatz:
     performs a collatz step with dt and perform error correction by another collatz solver, using dt/prec as timestep;
     error estimate is used to adjust dt
 collatz_vec:
+
     apply actual collatz algorithm to the velocity/gamma
 '''
 
@@ -309,6 +319,7 @@ def induced_velocity(elements_1, elements_2, h, gammas):
     '''
 
     u = np.zeros((len(elements_1)), dtype=np.complex128)
+
     for i in prange(len(elements_1)):
         U = 0.0
         V = 0.0
@@ -395,6 +406,7 @@ def viscous_vortex(free_elements, bd_elements, h, free_gammas, bd_gammas, visco)
         u[i] = U + 1j*V
     return  u
 
+
 #@njit(fastmath=True, parallel=True)
 def matrix_A_create(boundary_vortices, h, normal, z_cen):
     # Matrix A: normal velocity component of velocity induced by boundary vortices
@@ -410,6 +422,7 @@ def matrix_A_create(boundary_vortices, h, normal, z_cen):
             A[i, j] = U*normal[i].real + V*normal[i].imag
 
     A_t = A.T@A + np.eye((N))                           # correction because of inversion of ill conditioned A
+
     Inv = np.linalg.pinv(A_t)
     return A, Inv
 
@@ -479,10 +492,12 @@ def collatz_vec(vortices, bd_vortex, vel_inf, dt, h, gammas, bd_gammas, N, visco
 @njit(fastmath=True, parallel=True)
 def adaptive_collatz(vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec, visco, x_d, y_d, gammas, bd_gammas, t_detach, h, diffusion_method, merge_flag, H):
 
+
     t = 0
     flag = False
     cut_flag = np.zeros((len(vortices)))
     ada_dt = dt
+
 
     while t < dt:
 
@@ -518,6 +533,7 @@ def adaptive_collatz(vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec
             vortices_correct = vortices_test
             gammas_correct = gammas_test
 
+
         # adapt step size
         if flag or error < tol:
             t += ada_dt
@@ -534,6 +550,7 @@ def adaptive_collatz(vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec
 def random_walk(vortices, R_ch, dt):
     N = len(vortices)
     sigma = sqrt(2*dt/R_ch)
+
     mean = 0.0
     gaussian_pos = np.random.normal(mean, sigma, N) + 1j*np.random.normal(mean, sigma, N)
     vortices += gaussian_pos
@@ -566,6 +583,7 @@ def mark_cut(free_vortices, r, x_d, y_d, free_gammas, cut_flag, merge_flag, H):
     elif merge_flag == False:
         a = 0
 
+
     return cut_flag, free_gammas
 
 ###################
@@ -573,7 +591,6 @@ def mark_cut(free_vortices, r, x_d, y_d, free_gammas, cut_flag, merge_flag, H):
 ###################
 
 if __name__ == '__main__':
-
     runtime = []
     number_of_particles = []
     frequency_check_particles = []
@@ -600,6 +617,7 @@ if __name__ == '__main__':
     normal, control_points, z1 = segments_create(r, N)
     tangent = normal.imag - 1j * normal.real
     # create N boundary segments on a circle with radius r;  purely geometric
+
     boundary_vortices, boundary_gammas = boundary_vortices_create(N, ratio_CB, r, H)    # first introduction of flow carrying vortices
     A, Inv = matrix_A_create(boundary_vortices, h, normal, control_points)              # create matrix of induced boundary velocity
     b = -(vel_inf.real * normal.real + vel_inf.imag * normal.imag)
@@ -621,6 +639,7 @@ if __name__ == '__main__':
         free_vortices, free_gammas, ada_dt, cut_flag = adaptive_collatz(free_vortices, boundary_vortices, dt, vel_inf, ada_dt, tol, prec, visco, x_d, y_d, free_gammas, boundary_gammas, t_detach, h, diffusion_method, merge_flag, H)
         #free_gammas = free_gammas - sum(free_gammas)/len(free_gammas) # normalize gammas to force conservation of energy
 
+
         cut_flag = np.array(cut_flag, dtype=bool)
         if tracer_flag:
             tracers = np.append(tracers, free_vortices[cut_flag])
@@ -639,6 +658,7 @@ if __name__ == '__main__':
             free_vortices, free_gammas = free_vortices_create(free_vortices, boundary_vortices, free_gammas, boundary_gammas, tracers_add, tracer_flag, visco, ada_dt, r, H, h, normal, vel_inf, sep_flag)
 
         toc = time.time()
+
 
         if plot_flag:
             if count_plot == int(t_plot/dt):
@@ -753,9 +773,10 @@ row = 1
 for b in bd:
 
     worksheet3.write(row, 0, b)
+
     row += 1
 
 workbook.close()
-
 #print('to end simulation, press any key ...')
 #print(input())
+
